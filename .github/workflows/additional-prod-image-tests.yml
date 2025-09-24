@@ -16,14 +16,17 @@
 # under the License.
 #
 ---
-name: All PROD image tests
+name: Additional PROD image tests
 on:  # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
-      runs-on:
-        description: "The array of labels (in json form) determining type of the runner to use for the build."
-        required: false
-        default: '["ubuntu-22.04"]'
+      runners:
+        description: "The array of labels (in json form) determining runners."
+        required: true
+        type: string
+      platform:
+        description: "Platform for the build - 'linux/amd64' or 'linux/arm64'"
+        required: true
         type: string
       default-branch:
         description: "The default branch for the repository"
@@ -33,20 +36,16 @@ on:  # yamllint disable-line rule:truthy
         description: "Branch used to construct constraints URL from."
         required: true
         type: string
-      image-tag:
-        description: "Tag to set for the image"
-        required: true
-        type: string
       upgrade-to-newer-dependencies:
         description: "Whether to upgrade to newer dependencies (true/false)"
         required: true
         type: string
-      chicken-egg-providers:
-        description: "Whether to build chicken-egg provider packages in the same run (true/false)"
-        required: true
-        type: string
       docker-cache:
         description: "Docker cache specification to build the image (registry, local, disabled)."
+        required: true
+        type: string
+      disable-airflow-repo-cache:
+        description: "Disable airflow repo cache read from main."
         required: true
         type: string
       canary-run:
@@ -54,104 +53,150 @@ on:  # yamllint disable-line rule:truthy
         required: true
         type: string
       default-python-version:
-        description: Which version of python should be used get CI image
+        description: "Which version of python should be used by default"
         required: true
         type: string
+      use-uv:
+        description: "Whether to use uv"
+        required: true
+        type: string
+permissions:
+  contents: read
 jobs:
   prod-image-extra-checks-main:
     name: PROD image extra checks (main)
     uses: ./.github/workflows/prod-image-extra-checks.yml
     with:
+      runners: ${{ inputs.runners }}
+      platform: ${{ inputs.platform }}
       python-versions: "[ '${{ inputs.default-python-version }}' ]"
+      default-python-version: "${{ inputs.default-python-version }}"
       branch: ${{ inputs.default-branch }}
-      image-tag: ${{ inputs.image-tag }}
-      build-provider-packages: ${{ inputs.default-branch == 'main' }}
       upgrade-to-newer-dependencies: ${{ inputs.upgrade-to-newer-dependencies }}
-      chicken-egg-providers: ${{ inputs.chicken-egg-providers }}
       constraints-branch: ${{ inputs.constraints-branch }}
       docker-cache: ${{ inputs.docker-cache }}
+      disable-airflow-repo-cache: ${{ inputs.disable-airflow-repo-cache }}
     if: inputs.default-branch == 'main' && inputs.canary-run == 'true'
 
   prod-image-extra-checks-release-branch:
     name: PROD image extra checks (release)
     uses: ./.github/workflows/prod-image-extra-checks.yml
     with:
+      runners: ${{ inputs.runners }}
+      platform: ${{ inputs.platform }}
       python-versions: "[ '${{ inputs.default-python-version }}' ]"
+      default-python-version: "${{ inputs.default-python-version }}"
       branch: ${{ inputs.default-branch }}
-      image-tag: ${{ inputs.image-tag }}
-      build-provider-packages: ${{ inputs.default-branch == 'main' }}
       upgrade-to-newer-dependencies: ${{ inputs.upgrade-to-newer-dependencies }}
-      chicken-egg-providers: ${{ inputs.chicken-egg-providers }}
       constraints-branch: ${{ inputs.constraints-branch }}
       docker-cache: ${{ inputs.docker-cache }}
+      disable-airflow-repo-cache: ${{ inputs.disable-airflow-repo-cache }}
     if: inputs.default-branch != 'main' && inputs.canary-run == 'true'
 
   test-examples-of-prod-image-building:
     timeout-minutes: 60
-    name: "Test examples of POD image building"
-    runs-on: ["ubuntu-22.04"]
+    name: "Test examples of PROD image building"
+    runs-on: ${{ fromJSON(inputs.runners) }}
     env:
+      GITHUB_REPOSITORY: ${{ github.repository }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_USERNAME: ${{ github.actor }}
+      VERBOSE: "true"
     steps:
       - name: "Cleanup repo"
         shell: bash
         run: docker run -v "${GITHUB_WORKSPACE}:/workspace" -u 0:0 bash -c "rm -rf /workspace/*"
       - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Cleanup docker
-        uses: ./.github/actions/cleanup-docker
-      - name: "Install Breeze"
-        uses: ./.github/actions/breeze
-      - name: Login to ghcr.io
-        shell: bash
-        run: echo "${{ env.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-      - name: Pull PROD image ${{ inputs.default-python-version}}:${{ inputs.image-tag }}
-        run: breeze prod-image pull --tag-as-latest
-        env:
-          PYTHON_MAJOR_MINOR_VERSION: "${{ inputs.default-python-version }}"
-          IMAGE_TAG: "${{ inputs.image-tag }}"
-      - name: "Setup python"
-        uses: actions/setup-python@v5
+      - name: "Prepare breeze & PROD image: ${{ inputs.default-python-version }}"
+        uses: ./.github/actions/prepare_breeze_and_image
         with:
-          python-version: ${{ inputs.default-python-version }}
-          cache: 'pip'
-          cache-dependency-path: ./dev/requirements.txt
+          platform: ${{ inputs.platform }}
+          image-type: "prod"
+          python: "${{ inputs.default-python-version }}"
+          use-uv: ${{ inputs.use-uv }}
+          make-mnt-writeable-and-cleanup: true
       - name: "Test examples of PROD image building"
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ inputs.default-branch }}
+          DEFAULT_PYTHON_VERSION: "${{ inputs.default-python-version }}"
         run: "
-          cd ./docker_tests && \
-          python -m pip install -r requirements.txt && \
-          TEST_IMAGE=\"ghcr.io/${{ github.repository }}/${{ inputs.default-branch }}\
-          /prod/python${{ inputs.default-python-version }}:${{ inputs.image-tag }}\" \
-          python -m pytest test_examples_of_prod_image_building.py -n auto --color=yes"
+          cd ./docker-tests && \
+          TEST_IMAGE=\"ghcr.io/$GITHUB_REPOSITORY/$DEFAULT_BRANCH\
+          /prod/python$DEFAULT_PYTHON_VERSION\" \
+          uv run pytest tests/docker_tests/test_examples_of_prod_image_building.py -n auto --color=yes"
 
   test-docker-compose-quick-start:
     timeout-minutes: 60
-    name: "Docker-compose quick start with PROD image verifying"
-    runs-on: ["ubuntu-22.04"]
+    name: "Docker Compose quick start with PROD image verifying"
+    runs-on: ${{ fromJSON(inputs.runners) }}
     env:
-      IMAGE_TAG: "${{ inputs.image-tag }}"
       PYTHON_MAJOR_MINOR_VERSION: "${{ inputs.default-python-version }}"
+      GITHUB_REPOSITORY: ${{ github.repository }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_USERNAME: ${{ github.actor }}
+      VERBOSE: "true"
     steps:
       - name: "Cleanup repo"
         shell: bash
         run: docker run -v "${GITHUB_WORKSPACE}:/workspace" -u 0:0 bash -c "rm -rf /workspace/*"
       - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
           fetch-depth: 2
           persist-credentials: false
-      - name: Cleanup docker
-        uses: ./.github/actions/cleanup-docker
-      - name: "Install Breeze"
-        uses: ./.github/actions/breeze
-      - name: Login to ghcr.io
-        shell: bash
-        run: echo "${{ env.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-      - name: "Pull image ${{ inputs.default-python-version}}:${{ inputs.image-tag }}"
-        run: breeze prod-image pull --tag-as-latest
+      - name: "Prepare breeze & PROD image: ${{ env.PYTHON_MAJOR_MINOR_VERSION }}"
+        uses: ./.github/actions/prepare_breeze_and_image
+        with:
+          platform: ${{ inputs.platform }}
+          image-type: "prod"
+          python: ${{ env.PYTHON_MAJOR_MINOR_VERSION }}
+          use-uv: ${{ inputs.use-uv }}
+          make-mnt-writeable-and-cleanup: true
+        id: breeze
       - name: "Test docker-compose quick start"
         run: breeze testing docker-compose-tests
+
+  task-sdk-integration-tests:
+    timeout-minutes: 60
+    name: "Task SDK integration tests with PROD image"
+    runs-on: ${{ fromJSON(inputs.runners) }}
+    env:
+      PYTHON_MAJOR_MINOR_VERSION: "${{ inputs.default-python-version }}"
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_USERNAME: ${{ github.actor }}
+      VERBOSE: "true"
+    steps:
+      - name: "Cleanup repo"
+        shell: bash
+        run: docker run -v "${GITHUB_WORKSPACE}:/workspace" -u 0:0 bash -c "rm -rf /workspace/*"
+      - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: "Prepare breeze & PROD image: ${{ env.PYTHON_MAJOR_MINOR_VERSION }}"
+        uses: ./.github/actions/prepare_breeze_and_image
+        with:
+          platform: ${{ inputs.platform }}
+          image-type: "prod"
+          python: ${{ env.PYTHON_MAJOR_MINOR_VERSION }}
+          use-uv: ${{ inputs.use-uv }}
+          make-mnt-writeable-and-cleanup: true
+        id: breeze
+      - name: "Run Task SDK integration tests"
+        run: breeze testing task-sdk-integration-tests
+
+  test-e2e-integration-tests:
+    name: "Test e2e integration tests with PROD image"
+    uses: ./.github/workflows/airflow-e2e-tests.yml
+    with:
+      runners: ${{ inputs.runners }}
+      platform: ${{ inputs.platform }}
+      default-python-version: "${{ inputs.default-python-version }}"
+      use-uv: ${{ inputs.use-uv }}

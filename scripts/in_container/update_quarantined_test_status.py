@@ -181,7 +181,15 @@ if __name__ == "__main__":
     with open(sys.argv[1]) as f:
         text = f.read()
     y = BeautifulSoup(text, "html.parser")
-    res = y.testsuites.testsuite.findAll("testcase")
+    testsuites = y.testsuites
+    if testsuites is None:
+        print("No testsuites found in the XML file")
+        sys.exit(1)
+    testsuite = testsuites.testsuite
+    if testsuite is None:
+        print(f"No testsuite found in the XML file in {testsuites}")
+        sys.exit(1)
+    res = testsuite.findAll("testcase")  # type: ignore[call-arg]
     for test in res:
         print("Parsing: " + test["classname"] + "::" + test["name"])
         if test.contents and test.contents[0].name == "skipped":
@@ -202,14 +210,14 @@ if __name__ == "__main__":
     print(f"Token: {token}")
     github_repository = os.environ.get("GITHUB_REPOSITORY")
     if not github_repository:
-        raise Exception("GitHub Repository must be defined!")
+        raise RuntimeError("GitHub Repository must be defined!")
     user, repo = github_repository.split("/")
     print(f"User: {user}, Repo: {repo}")
     issue_id = int(os.environ.get("ISSUE_ID", 0))
     num_runs = int(os.environ.get("NUM_RUNS", 10))
 
     if issue_id == 0:
-        raise Exception("You need to define ISSUE_ID as environment variable")
+        raise RuntimeError("You need to define ISSUE_ID as environment variable")
 
     gh = login(token=token)
 

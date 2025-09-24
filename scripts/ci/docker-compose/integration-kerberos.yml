@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 ---
-version: "3.8"
 services:
   kdc-server-example-com:
     image: ghcr.io/apache/airflow-krb5-kdc-server:2021.07.04
@@ -49,6 +48,7 @@ services:
         "
       interval: 5s
       timeout: 30s
+      start_period: 30s
       retries: 50
     restart: "on-failure"
 

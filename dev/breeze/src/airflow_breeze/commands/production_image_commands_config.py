@@ -22,6 +22,8 @@ PRODUCTION_IMAGE_TOOLS_COMMANDS: dict[str, str | list[str]] = {
         "build",
         "pull",
         "verify",
+        "save",
+        "load",
     ],
 }
 PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] = {
@@ -32,12 +34,9 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
                 "--build-progress",
                 "--docker-cache",
                 "--docker-host",
-                "--image-tag",
                 "--install-airflow-version",
                 "--python",
-                "--tag-as-latest",
-                "--use-uv",
-                "--version-suffix-for-pypi",
+                "--version-suffix",
             ],
         },
         {
@@ -58,6 +57,8 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
                 "--commit-sha",
                 "--debian-version",
                 "--python-image",
+                "--use-uv",
+                "--uv-http-timeout",
             ],
         },
         {
@@ -91,10 +92,10 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
             "options": [
                 "--installation-method",
                 "--install-airflow-reference",
-                "--install-packages-from-context",
+                "--install-distributions-from-context",
                 "--install-mysql-client-type",
                 "--cleanup-context",
-                "--use-constraints-for-context-packages",
+                "--use-constraints-for-context-distributions",
                 "--disable-airflow-repo-cache",
                 "--disable-mysql-client-installation",
                 "--disable-mssql-client-installation",
@@ -111,7 +112,7 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
             ],
         },
         {
-            "name": "Github authentication",
+            "name": "GitHub authentication",
             "options": [
                 "--github-repository",
                 "--github-token",
@@ -122,11 +123,9 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
         {
             "name": "Pull image flags",
             "options": [
-                "--image-tag",
                 "--python",
                 "--verify",
                 "--wait-for-image",
-                "--tag-as-latest",
             ],
         },
         {
@@ -141,7 +140,7 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
             ],
         },
         {
-            "name": "Github authentication",
+            "name": "GitHub authentication",
             "options": [
                 "--github-repository",
                 "--github-token",
@@ -155,8 +154,8 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
                 "--image-name",
                 "--python",
                 "--slim-image",
-                "--image-tag",
                 "--pull",
+                "--manifest-file",
             ],
         },
         {
@@ -171,10 +170,38 @@ PRODUCTION_IMAGE_TOOLS_PARAMETERS: dict[str, list[dict[str, str | list[str]]]] =
             ],
         },
         {
-            "name": "Github authentication",
+            "name": "GitHub authentication",
             "options": [
                 "--github-repository",
                 "--github-token",
+            ],
+        },
+    ],
+    "breeze prod-image save": [
+        {
+            "name": "Save image flags",
+            "options": [
+                "--python",
+                "--platform",
+                "--github-repository",
+                "--image-file",
+                "--image-file-dir",
+            ],
+        },
+    ],
+    "breeze prod-image load": [
+        {
+            "name": "Load image flags",
+            "options": [
+                "--python",
+                "--platform",
+                "--image-file",
+                "--image-file-dir",
+                "--github-repository",
+                "--github-token",
+                "--from-run",
+                "--from-pr",
+                "--skip-image-file-deletion",
             ],
         },
     ],

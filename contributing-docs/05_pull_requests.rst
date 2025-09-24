@@ -22,7 +22,7 @@ Pull Requests
 This document describes how you can create Pull Requests and describes coding standards we use when
 implementing them.
 
-.. contents:: :local:
+**The outline for this document in GitHub is available at top-right corner button (with 3-dots and 3 lines).**
 
 Pull Request guidelines
 -----------------------
@@ -32,24 +32,23 @@ these guidelines:
 
 -   Include tests, either as doctests, unit tests, or both, to your pull request.
 
-    The airflow repo uses `GitHub Actions <https://help.github.com/en/actions>`__ to
+    The Airflow repo uses `GitHub Actions <https://help.github.com/en/actions>`__ to
     run the tests and `codecov <https://codecov.io/gh/apache/airflow>`__ to track
     coverage. You can set up both for free on your fork. It will help you make sure you do not
     break the build with your PR and that you help increase coverage.
-    Also we advise to install locally `pre-commit hooks <08_static_code_checks.rst#pre-commit-hooks>`__ to
+    Also we advise to install locally `prek hooks <08_static_code_checks.rst#prek-hooks>`__ to
     apply various checks, code generation and formatting at the time you make a local commit - which
     gives you near-immediate feedback on things you need to fix before you push your code to the PR, or in
     many case it will even fix it for you locally so that you can add and commit it straight away.
 
 -   Follow our project's `Coding style and best practices`_. Usually we attempt to enforce the practices by
-    having appropriate pre-commits. There are checks amongst them that aren't currently enforced
+    having appropriate prek hooks. There are checks amongst them that aren't currently enforced
     programmatically (either because they are too hard or just not yet done).
 
 -   Maintainers will not merge a PR that regresses linting or does not pass CI tests (unless you have good
     justification that it a transient error or something that is being fixed in other PR).
 
--   Maintainers will not merge PRs that have unresolved conversation. Note! This is experimental - to be
-    assessed at the end of January 2024 if we want to continue it.
+-   Maintainers will not merge PRs that have unresolved conversation.
 
 -   We prefer that you ``rebase`` your PR (and do it quite often) rather than merge. It leads to
     easier reviews and cleaner changes where you know exactly what changes you've done. You can learn more
@@ -63,16 +62,16 @@ these guidelines:
     maintenance burden during rebase.
 
 -   Add an `Apache License <http://www.apache.org/legal/src-headers.html>`__ header to all new files. If you
-    have ``pre-commit`` installed, pre-commit will do it automatically for you. If you hesitate to install
-    pre-commit for your local repository - for example because it takes a few seconds to commit your changes,
-    this one thing might be a good reason to convince anyone to install pre-commit.
+    have ``prek`` installed, prej will do it automatically for you. If you hesitate to install
+    prek for your local repository - for example because it takes a few seconds to commit your changes,
+    this one thing might be a good reason to convince anyone to install prek.
 
 -   If your PR adds functionality, make sure to update the docs as part of the same PR, not only
     code and tests. Docstring is often sufficient. Make sure to follow the Sphinx compatible standards.
 
 -   Make sure your code fulfills all the
     `static code checks <08_static_code_checks.rst#static-code-checks>`__ we have in our code. The easiest way
-    to make sure of that is - again - to install `pre-commit hooks <08_static_code_checks.rst#pre-commit-hooks>`__
+    to make sure of that is - again - to install `prek hooks <08_static_code_checks.rst#prek-hooks>`__
 
 -   Make sure your PR is small and focused on one change only - avoid adding unrelated changes, mixing
     adding features and refactoring. Keeping to that rule will make it easier to review your PR and will make
@@ -88,11 +87,12 @@ these guidelines:
     to the changed code (for example for ``airflow/cli/cli_parser.py`` changes you have tests in
     ``tests/cli/test_cli_parser.py``). However there are a number of cases where the tests that should run
     are placed elsewhere - you can either run tests for the whole ``TEST_TYPE`` that is relevant (see
-    ``breeze testing tests --help`` output for available test types) or you can run all tests, or eventually
+    ``breeze testing core-tests --help`` or ``breeze testing providers-tests --help`` output for
+    available test types for each of the testing commands) or you can run all tests, or eventually
     you can push your code to PR and see results of the tests in the CI.
 
 -   You can use any supported python version to run the tests, but the best is to check
-    if it works for the oldest supported version (Python 3.8 currently). In rare cases
+    if it works for the oldest supported version (Python 3.10 currently). In rare cases
     tests might fail with the oldest version when you use features that are available in newer Python
     versions. For that purpose we have ``airflow.compat`` package where we keep back-ported
     useful features from newer versions.
@@ -100,23 +100,20 @@ these guidelines:
 -   Adhere to guidelines for commit messages described in this `article <https://cbea.ms/git-commit/>`__.
     This makes the lives of those who come after you (and your future self) a lot easier.
 
-Experimental Requirement to resolve all conversations
------------------------------------------------------
+Requirement to resolve all conversations
+----------------------------------------
 
-In December 2023 we enabled - experimentally - the requirement to resolve all the open conversations in a
+We have decided to enable the requirement to resolve all the open conversations in a
 PR in order to make it merge-able. You will see in the status of the PR that it needs to have all the
 conversations resolved before it can be merged.
 
-This is an experiment and we will evaluate by the end of January 2024. If it turns out to be a good idea,
-we will keep it enabled in the future.
-
-The goal of this experiment is to make it easier to see when there are some conversations that are not
+The goal is to make it easier to see when there are some conversations that are not
 resolved for everyone involved in the PR - author, reviewers and maintainers who try to figure out if
 the PR is ready to merge and - eventually - merge it. The goal is also to use conversations more as a "soft" way
 to request changes and limit the use of ``Request changes`` status to only those cases when the maintainer
-is sure that the PR should not be merged in the current state. That should lead to faster review/merge
+is sure that the PR should not be merged in the current state. This leads to faster review/merge
 cycle and less problems with stalled PRs that have ``Request changes`` status but all the issues are
-already solved (assuming that maintainers will start treating the conversations this way).
+already solved.
 
 .. _coding_style:
 
@@ -180,7 +177,7 @@ To make this easier, there is the ``create_session`` helper:
 .. warning::
   **DO NOT** add a default to the ``session`` argument **unless** ``@provide_session`` is used.
 
-If this function is designed to be called by "end-users" (i.e. DAG authors) then using the ``@provide_session`` wrapper is okay:
+If this function is designed to be called by "end-users" (i.e. Dag authors) then using the ``@provide_session`` wrapper is okay:
 
 .. code-block:: python
 
@@ -249,7 +246,7 @@ Airflow Operators might have some fields added to the list of ``template_fields`
 set in the constructor (``__init__`` method) of the operator and usually their values should
 come from the ``__init__`` method arguments. The reason for that is that the templated fields
 are evaluated at the time of the operator execution and when you pass arguments to the operator
-in the DAG, the fields that are set on the class just before the ``execute`` method is called
+in the Dag, the fields that are set on the class just before the ``execute`` method is called
 are processed through templating engine and the fields values are set to the result of applying the
 templating engine to the fields (in case the field is a structure such as dict or list, the templating
 engine is applied to all the values of the structure).
@@ -274,9 +271,35 @@ In such cases we can usually do something like this
         self.my_field = my_field
 
 The reason for doing it is that we are working on a cleaning up our code to have
-`pre-commit hook <../scripts/ci/pre_commit/pre_commit_validate_operators_init.py>`__
+`prek hook <../scripts/ci/prek/validate_operators_init.py>`__
 that will make sure all the cases where logic (such as validation and complex conversion)
 is not done in the constructor are detected in PRs.
+
+Don't raise AirflowException directly
+..............................................
+
+Our community has decided to stop adding new ``raise AirflowException`` and to adopt the following practices when an exception is necessary. For details check the relevant `mailing list thread <https://lists.apache.org/thread/t8bnhyqy77kq4fk7fj3fmjd5wo9kv6w0>`_.
+
+1. In most cases, we should prioritize using Python's standard exceptions (e.g., ``ValueError``, ``TypeError``, ``OSError``)
+   instead of wrapping everything in ``AirflowException``.
+2. Within ``airflow-core``, we should define and utilize more specific exception classes under ``airflow-core/src/airflow/exceptions.py``.
+3. For provider-specific implementations, exceptions should be defined within ``providers/<provider>/src/airflow/providers/<provider>/exceptions.py``.
+
+The use of points 2 and 3 should only be considered when point 1 is inappropriate, which should be a rare occurrence.
+
+In other words instead of doing:
+
+.. code-block:: python
+
+   if key not in conf:
+       raise AirflowException(f"Required key {key} is missing")
+
+you should do:
+
+.. code-block:: python
+
+   if key not in conf:
+       raise ValueError(f"Required key {key} is missing")
 
 -----------
 

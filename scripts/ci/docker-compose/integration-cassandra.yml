@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 ---
-version: "3.8"
 services:
   cassandra:
     image: cassandra:3.0
@@ -32,6 +31,7 @@ services:
       test: "[ $$(nodetool --host '::FFFF:127.0.0.1' statusgossip) = running ]"
       interval: 5s
       timeout: 30s
+      start_period: 30s
       retries: 50
     restart: "on-failure"
 

@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 ---
-version: "3.8"
 services:
   trino:
     image: ghcr.io/apache/airflow-trino:359-2021.07.04
@@ -31,6 +30,7 @@ services:
       test: curl --fail http://localhost:8080/v1/info/ | grep '"starting":false'
       interval: 5s
       timeout: 30s
+      start_period: 30s
       retries: 50
     restart: "on-failure"
 
