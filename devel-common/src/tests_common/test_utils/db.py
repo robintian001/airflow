@@ -105,8 +105,11 @@ def _bootstrap_dagbag():
 
         dagbag = DagBag()
         # Save DAGs in the ORM
-        if AIRFLOW_V_3_2_PLUS:
-            from airflow.dag_processing.dagbag import sync_bag_to_db
+        if AIRFLOW_V_3_1_PLUS:
+            try:
+                from airflow.dag_processing.dagbag import sync_bag_to_db
+            except ImportError:
+                from airflow.models.dagbag import sync_bag_to_db
 
             sync_bag_to_db(dagbag, bundle_name="dags-folder", bundle_version=None, session=session)
         elif AIRFLOW_V_3_0_PLUS:
@@ -180,8 +183,11 @@ def parse_and_sync_to_db(folder: Path | str, include_examples: bool = False):
             session.flush()
 
         dagbag = DagBag(dag_folder=folder, include_examples=include_examples)
-        if AIRFLOW_V_3_2_PLUS:
-            from airflow.dag_processing.dagbag import sync_bag_to_db
+        if AIRFLOW_V_3_1_PLUS:
+            try:
+                from airflow.dag_processing.dagbag import sync_bag_to_db
+            except ImportError:
+                from airflow.models.dagbag import sync_bag_to_db  # type: ignore[no-redef, attribute-defined]
 
             sync_bag_to_db(dagbag, "dags-folder", None, session=session)
         elif AIRFLOW_V_3_0_PLUS:
@@ -320,7 +326,13 @@ def clear_db_dag_code():
 
 def clear_db_callbacks():
     with create_session() as session:
-        session.query(DbCallbackRequest).delete()
+        if AIRFLOW_V_3_2_PLUS:
+            from airflow.models.callback import Callback
+
+            session.query(Callback).delete()
+
+        else:
+            session.query(DbCallbackRequest).delete()
 
 
 def set_default_pool_slots(slots):

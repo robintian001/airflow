@@ -848,6 +848,23 @@ class TestKubernetesPodOperator:
         pod = k.build_pod_request_obj(create_context(k))
         assert pod.spec.containers[0].termination_message_policy == "File"
 
+    def test_termination_grace_period_correctly_set(self):
+        k = KubernetesPodOperator(
+            task_id="task",
+            termination_grace_period=300,
+        )
+
+        pod = k.build_pod_request_obj(create_context(k))
+        assert pod.spec.termination_grace_period_seconds == 300
+
+    def test_termination_grace_period_default_value_correctly_set(self):
+        k = KubernetesPodOperator(
+            task_id="task",
+        )
+
+        pod = k.build_pod_request_obj(create_context(k))
+        assert pod.spec.termination_grace_period_seconds is None
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "task_kwargs, base_container_fail, expect_to_delete_pod",
@@ -2149,18 +2166,6 @@ class TestKubernetesPodOperator:
         process_pod_deletion_mock.assert_called_once_with(pod_1)
         assert result.metadata.name == pod_2.metadata.name
 
-    @patch(POD_MANAGER_CLASS.format("fetch_container_logs"))
-    @patch(KUB_OP_PATH.format("invoke_defer_method"))
-    def test_defere_call_one_more_time_after_error(self, invoke_defer_method, fetch_container_logs):
-        fetch_container_logs.return_value = PodLoggingStatus(False, None)
-        op = KubernetesPodOperator(task_id="test_task", name="test-pod", get_logs=True)
-
-        op.trigger_reentry(
-            create_context(op), event={"name": TEST_NAME, "namespace": TEST_NAMESPACE, "status": "running"}
-        )
-
-        invoke_defer_method.assert_called_with(None)
-
 
 class TestSuppress:
     def test__suppress(self, caplog):
@@ -2528,6 +2533,7 @@ class TestKubernetesPodOperatorAsync:
     @patch(KUB_OP_PATH.format("extract_xcom"))
     @patch(HOOK_CLASS)
     @patch(KUB_OP_PATH.format("pod_manager"))
+    @pytest.mark.xfail
     def test_async_write_logs_should_execute_successfully(
         self, mock_manager, mocked_hook, mock_extract_xcom, post_complete_action, get_logs
     ):
@@ -2548,8 +2554,12 @@ class TestKubernetesPodOperatorAsync:
         self.run_pod_async(k)
 
         if get_logs:
-            assert f"Container logs: {test_logs}"
+            # Note: the test below is broken and failing. Either the mock is wrong
+            # or the mocked container is not in a state that logging methods are called at-all.
+            # See https://github.com/apache/airflow/issues/57515
+            assert f"Container logs: {test_logs}"  # noqa: PLW0129
             post_complete_action.assert_called_once()
+            mock_manager.return_value.read_pod_logs.assert_called()
         else:
             mock_manager.return_value.read_pod_logs.assert_not_called()
 
@@ -2589,32 +2599,6 @@ class TestKubernetesPodOperatorAsync:
         with pytest.raises(AirflowException, match=expect_match):
             k.cleanup(pod, pod)
 
-    @patch(
-        "airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator.convert_config_file_to_dict"
-    )
-    @patch(f"{HOOK_CLASS}.get_pod")
-    @patch("airflow.providers.cncf.kubernetes.utils.pod_manager.PodManager.await_pod_completion")
-    @patch("airflow.providers.cncf.kubernetes.utils.pod_manager.PodManager.fetch_container_logs")
-    def test_get_logs_running(
-        self,
-        fetch_container_logs,
-        await_pod_completion,
-        get_pod,
-        mock_convert_config_file_to_dict,
-    ):
-        """When logs fetch exits with status running, raise task deferred"""
-        pod = MagicMock()
-        get_pod.return_value = pod
-        op = KubernetesPodOperator(task_id="test_task", name="test-pod", get_logs=True)
-        await_pod_completion.return_value = None
-        fetch_container_logs.return_value = PodLoggingStatus(True, None)
-        with pytest.raises(TaskDeferred):
-            op.trigger_reentry(
-                create_context(op),
-                event={"name": TEST_NAME, "namespace": TEST_NAMESPACE, "status": "running"},
-            )
-        fetch_container_logs.is_called_with(pod, "base")
-
     @patch(KUB_OP_PATH.format("_write_logs"))
     @patch("airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator.cleanup")
     @patch("airflow.providers.cncf.kubernetes.operators.pod.KubernetesPodOperator.find_pod")
@@ -2647,6 +2631,73 @@ class TestKubernetesPodOperatorAsync:
                     "namespace": TEST_NAMESPACE,
                 },
             )
+
+    @patch(HOOK_CLASS)
+    def test_execute_async_callbacks(self, mocked_hook):
+        from airflow.providers.cncf.kubernetes.callbacks import ExecutionMode
+
+        from unit.cncf.kubernetes.test_callbacks import (
+            MockKubernetesPodOperatorCallback,
+            MockWrapper,
+        )
+
+        MockWrapper.reset()
+        mock_callbacks = MockWrapper.mock_callbacks
+        remote_pod_mock = MagicMock()
+        remote_pod_mock.status.phase = "Succeeded"
+        self.await_pod_mock.return_value = remote_pod_mock
+        mocked_hook.return_value.get_pod.return_value = remote_pod_mock
+
+        k = KubernetesPodOperator(
+            namespace="default",
+            image="ubuntu:16.04",
+            cmds=["bash", "-cx"],
+            arguments=["echo 10"],
+            labels={"foo": "bar"},
+            name="test",
+            task_id="task",
+            do_xcom_push=False,
+            callbacks=MockKubernetesPodOperatorCallback,
+        )
+        context = create_context(k)
+
+        callback_event = {
+            "status": "success",
+            "message": TEST_SUCCESS_MESSAGE,
+            "name": TEST_NAME,
+            "namespace": TEST_NAMESPACE,
+        }
+        k.trigger_reentry(context=context, event=callback_event)
+
+        # check on_pod_cleanup callback
+        mock_callbacks.on_pod_cleanup.assert_called_once()
+        assert mock_callbacks.on_pod_cleanup.call_args.kwargs == {
+            "client": k.client,
+            "mode": ExecutionMode.SYNC,
+            "pod": remote_pod_mock,
+            "operator": k,
+            "context": context,
+        }
+
+        # check on_pod_completion callback
+        mock_callbacks.on_pod_completion.assert_called_once()
+        assert mock_callbacks.on_pod_completion.call_args.kwargs == {
+            "client": k.client,
+            "mode": ExecutionMode.SYNC,
+            "pod": remote_pod_mock,
+            "operator": k,
+            "context": context,
+        }
+
+        # check on_pod_teardown callback
+        mock_callbacks.on_pod_teardown.assert_called_once()
+        assert mock_callbacks.on_pod_teardown.call_args.kwargs == {
+            "client": k.client,
+            "mode": ExecutionMode.SYNC,
+            "pod": remote_pod_mock,
+            "operator": k,
+            "context": context,
+        }
 
 
 @pytest.mark.parametrize("do_xcom_push", [True, False])

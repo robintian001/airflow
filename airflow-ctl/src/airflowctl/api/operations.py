@@ -475,7 +475,7 @@ class DagsOperations(BaseOperations):
         """List DAGs."""
         return super().execute_list(path="dags", data_model=DAGCollectionResponse)
 
-    def patch(self, dag_id: str, dag_body: DAGPatchBody) -> DAGResponse | ServerResponseError:
+    def update(self, dag_id: str, dag_body: DAGPatchBody) -> DAGResponse | ServerResponseError:
         try:
             self.response = self.client.patch(f"dags/{dag_id}", json=dag_body.model_dump(mode="json"))
             return DAGResponse.model_validate_json(self.response.content)
@@ -521,6 +521,20 @@ class DagsOperations(BaseOperations):
     def list_warning(self) -> DAGWarningCollectionResponse | ServerResponseError:
         return super().execute_list(path="dagWarnings", data_model=DAGWarningCollectionResponse)
 
+    def trigger(
+        self, dag_id: str, trigger_dag_run: TriggerDAGRunPostBody
+    ) -> DAGRunResponse | ServerResponseError:
+        """Create a dag run."""
+        if trigger_dag_run.conf is None:
+            trigger_dag_run.conf = {}
+        try:
+            self.response = self.client.post(
+                f"dags/{dag_id}/dagRuns", json=trigger_dag_run.model_dump(mode="json")
+            )
+            return DAGRunResponse.model_validate_json(self.response.content)
+        except ServerResponseError as e:
+            raise e
+
 
 class DagRunOperations(BaseOperations):
     """Dag run operations."""
@@ -552,20 +566,6 @@ class DagRunOperations(BaseOperations):
         return super().execute_list(
             path=f"/dags/{dag_id}/dagRuns", data_model=DAGRunCollectionResponse, params=params
         )
-
-    def trigger(
-        self, dag_id: str, trigger_dag_run: TriggerDAGRunPostBody
-    ) -> DAGRunResponse | ServerResponseError:
-        """Create a dag run."""
-        if trigger_dag_run.conf is None:
-            trigger_dag_run.conf = {}
-        try:
-            self.response = self.client.post(
-                f"dags/{dag_id}/dagRuns", json=trigger_dag_run.model_dump(mode="json")
-            )
-            return DAGRunResponse.model_validate_json(self.response.content)
-        except ServerResponseError as e:
-            raise e
 
 
 class JobsOperations(BaseOperations):
